@@ -1,0 +1,5 @@
+.instance-id
+.instance-ip
+*.qcow2
+*.iso
+*.img

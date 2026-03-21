@@ -42,6 +42,11 @@ FSTAB
 # Restart services that depend on /var
 systemctl daemon-reexec
 systemctl restart libvirtd.socket
+
+# Auto-start Windows VM if QCOW2 exists
+if [ -f /opt/winserver2022-auto.qcow2 ]; then
+  sudo -u ubuntu bash /opt/run-windows.sh
+fi
 CLOUDINIT
 )
 

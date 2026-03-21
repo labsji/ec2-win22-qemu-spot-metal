@@ -53,9 +53,9 @@ if ($results.Updates.Count -gt 0) {
     Add-Content C:\setup-log.txt "Installed: result=$($r.ResultCode) reboot=$($r.RebootRequired) at $(Get-Date)"
 }
 
-# Install new WSL from GitHub
+# Install new WSL from GitHub (curl is faster than Invoke-WebRequest)
 $wslMsi = "$env:TEMP\wsl.msi"
-Invoke-WebRequest -Uri https://github.com/microsoft/WSL/releases/download/2.6.3/wsl.2.6.3.0.x64.msi -OutFile $wslMsi -UseBasicParsing
+& curl.exe -L -o $wslMsi https://github.com/microsoft/WSL/releases/download/2.6.3/wsl.2.6.3.0.x64.msi
 msiexec /i $wslMsi /quiet /norestart
 Start-Sleep 15
 Add-Content C:\setup-log.txt "WSL MSI installed at $(Get-Date)"

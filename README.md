@@ -290,3 +290,35 @@ Key points:
 
 ### Spot instance terminated, data lost?
 - All important data is on the persistent EBS volume. Just launch a new instance with `launch-metal-spot.sh`.
+
+### Exposing WSL2 services to the LAN
+
+WSL2 runs in a virtual network. To expose a service (e.g., a web app on port 8080) to other machines:
+
+```powershell
+# Get WSL IP
+$wslIp = (& "C:\Program Files\WSL\wsl.exe" -u root -- hostname -I).Trim()
+
+# Forward Windows port 9080 to WSL port 8080
+netsh interface portproxy add v4tov4 listenport=9080 listenaddress=0.0.0.0 connectport=8080 connectaddress=$wslIp
+
+# Allow through firewall
+netsh advfirewall firewall add rule name="WSL-9080" dir=in action=allow protocol=TCP localport=9080
+```
+
+Other machines on the LAN can then access `http://<windows-ip>:9080`.
+
+Note: WSL IP changes on reboot. The port proxy must be updated after each restart.
+
+## Base Platform Scope
+
+This repo provides the **base platform** only:
+
+- Windows Server 2022 (activated, latest build)
+- SSH, RDP access
+- Chocolatey, Git
+- WSL2 Ubuntu 24.04 with kernel 6.6.87
+- Podman + podman-compose for running containerized Linux applications
+- Dev tools: gcc, python3, aws-cli, jq, curl
+
+Application-specific concerns (MSI packaging, Windows service registration, sleep mode configuration, LAN service discovery, `netsh portproxy` automation) belong in separate application repos that build on this base.

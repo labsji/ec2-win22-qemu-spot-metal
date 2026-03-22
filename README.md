@@ -161,12 +161,12 @@ ssh -i ~/.ssh/ett8u-key ubuntu@$IP 'bash /opt/stop-windows.sh'
 
 ```bash
 ssh -i ~/.ssh/ett8u-key -J ubuntu@$IP -p 2222 Administrator@localhost
-# Password: Admin2026
+# Password: see secrets/admin-password.txt
 ```
 
 Or from the Linux host:
 ```bash
-sshpass -p "Admin2026" ssh -p 2222 Administrator@localhost
+sshpass -p "$(cat secrets/admin-password.txt)" ssh -p 2222 Administrator@localhost
 ```
 
 ### VNC access
@@ -183,7 +183,7 @@ RDP is forwarded to port 3389 of the host:
 ```bash
 ssh -i ~/.ssh/ett8u-key -L 3389:localhost:3389 ubuntu@$IP
 # Then connect RDP client to localhost:3389
-# User: Administrator, Password: Admin2026
+# User: Administrator, Password: see secrets/admin-password.txt
 ```
 
 ## File Layout

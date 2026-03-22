@@ -23,6 +23,7 @@ sudo mount "$FLOPPY" "$MNTDIR"
 sudo cp /tmp/autounattend.xml "$MNTDIR/"
 sudo cp "$SCRIPT_DIR/setup.ps1" "$MNTDIR/"
 echo "$ACTKEY" | sudo tee "$MNTDIR/activation-key.txt" > /dev/null
+sudo cp "$SCRIPT_DIR/wsl-cloud-init.yaml" "$MNTDIR/"
 sudo umount "$MNTDIR"
 rmdir "$MNTDIR"
 rm -f /tmp/autounattend.xml

@@ -65,6 +65,10 @@ Add-Content C:\setup-log.txt "WSL MSI installed at $(Get-Date)"
 & "C:\Program Files\WSL\wsl.exe" --install Ubuntu --no-launch
 Add-Content C:\setup-log.txt "Ubuntu installed at $(Get-Date)"
 
+# Configure WSL Ubuntu - install dev tools
+& "C:\Program Files\WSL\wsl.exe" -u root -- bash -c "apt-get update && apt-get install -y build-essential git curl wget unzip python3 python3-pip python3-venv jq tree htop > /dev/null 2>&1 && curl -s https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip && unzip -qo /tmp/awscliv2.zip -d /tmp && /tmp/aws/install > /dev/null 2>&1 && rm -rf /tmp/aws /tmp/awscliv2.zip"
+Add-Content C:\setup-log.txt "WSL Ubuntu configured at $(Get-Date)"
+
 # Cleanup
 Unregister-ScheduledTask -TaskName SetupPart2 -Confirm:$false
 

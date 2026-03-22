@@ -83,6 +83,10 @@ Register-ScheduledTask -TaskName 'SetupPart2' -Action $action -Trigger $trigger 
 Add-Content C:\setup-log.txt "Part1 done, part2 scheduled at $(Get-Date)"
 
 # DISM activation LAST - this forces a reboot
-dism /online /set-edition:ServerStandard /productkey:RNKHH-MMFB3-RFYX2-HRH4H-QPHHB /accepteula /quiet
+$key = (Get-Content A:\activation-key.txt -ErrorAction SilentlyContinue | Select-Object -First 1).Trim()
+if ($key -and $key -ne 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX') {
+    Add-Content C:\setup-log.txt "Activating with DISM at $(Get-Date)"
+    dism /online /set-edition:ServerStandard /productkey:$key /accepteula /quiet
+}
 # If DISM didn't reboot, do it manually
 Restart-Computer -Force

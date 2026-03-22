@@ -10,6 +10,12 @@ MNTDIR=$(mktemp -d)
 sudo mount "$FLOPPY" "$MNTDIR"
 sudo cp "$SCRIPT_DIR/autounattend.xml" "$MNTDIR/"
 sudo cp "$SCRIPT_DIR/setup.ps1" "$MNTDIR/"
+# Use private key if available, otherwise template
+if [ -f "$SCRIPT_DIR/secrets/activation-key.txt" ]; then
+  sudo cp "$SCRIPT_DIR/secrets/activation-key.txt" "$MNTDIR/"
+else
+  sudo cp "$SCRIPT_DIR/activation-key.txt" "$MNTDIR/"
+fi
 sudo umount "$MNTDIR"
 rmdir "$MNTDIR"
 echo "Floppy image created: $FLOPPY"

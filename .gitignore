@@ -1,4 +1,5 @@
 .instance-id
 .instance-ip
+.shazam-state
 *.qcow2
 *.iso

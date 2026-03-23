@@ -2,6 +2,45 @@
 
 Windows Server 2022 QEMU/KVM dev environment on AWS Linux metal spot instances with WSL2 Ubuntu — for packaging Linux open source software for the Windows ecosystem.
 
+## Quick Start (5 minutes)
+
+### 1. Open AWS CloudShell
+
+Log into the [AWS Console](https://console.aws.amazon.com), then click the CloudShell icon in the top navigation bar:
+
+![Click the CloudShell icon in the AWS Console top bar](.github/cloudshell-icon.png)
+
+> CloudShell gives you a terminal with AWS credentials already configured — no setup needed.
+
+### 2. Clone and launch
+
+```bash
+git clone https://github.com/labsji/ec2-win22-qemu-spot-metal.git
+cd ec2-win22-qemu-spot-metal
+bash shazam.sh
+```
+
+That's it. In ~5 minutes you'll have a Windows Server 2022 VM with WSL2 Ubuntu, SSH, RDP, Git, Chocolatey, and podman.
+
+### 3. When you're done
+
+```bash
+bash shazam.sh down      # stop instance, keep your data (~$20/month for EBS)
+bash shazam.sh destroy   # delete EVERYTHING, zero ongoing cost
+```
+
+### All commands
+
+| Command | What it does |
+|---------|-------------|
+| `bash shazam.sh` | Launch (or resume) the dev environment |
+| `bash shazam.sh down` | Terminate instance, keep EBS data |
+| `bash shazam.sh destroy` | Delete ALL resources (confirms first) |
+| `bash shazam.sh ssh` | SSH into the Linux host |
+| `bash shazam.sh winssh` | SSH into the Windows VM |
+| `bash shazam.sh status` | Show current state |
+| `bash shazam.sh cost` | Show running costs |
+
 ## Why?
 
 - Windows metal instances (e.g., `i3en.metal`) cost ~$5/hr in Mumbai

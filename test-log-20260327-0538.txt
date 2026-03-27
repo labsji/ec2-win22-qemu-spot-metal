@@ -1,0 +1,55 @@
+=== Test started Fri Mar 27 05:38:38 AM UTC 2026 ===
+Waiting for HTTP 200 at /lms...
+  attempt 1: HTTP 000000
+  attempt 2: HTTP 000000
+  attempt 3: HTTP 000000
+  attempt 4: HTTP 000000
+  attempt 5: HTTP 000000
+  attempt 6: HTTP 000000
+  attempt 7: HTTP 000000
+  attempt 8: HTTP 000000
+  attempt 9: HTTP 000000
+  attempt 10: HTTP 200
+=== HTTP 200 confirmed. Rebooting Windows... ===
+Waiting 120s for reboot...
+Waiting for Windows SSH...
+WIN-DEV
+Checking scheduled task...
+Running
+Waiting for containers...
+lms_mariadb_1 Up About a minute
+lms_redis_1 Up About a minute
+lms_frappe_1 Up About a minute
+Waiting for HTTP 200 after reboot...
+  attempt 1: HTTP 000000
+  attempt 2: HTTP 000000
+  attempt 3: HTTP 000000
+  attempt 4: HTTP 000000
+  attempt 5: HTTP 000000
+  attempt 6: HTTP 000000
+  attempt 7: HTTP 000000
+  attempt 8: HTTP 000000
+  attempt 9: HTTP 000000
+  attempt 10: HTTP 000000
+  attempt 11: HTTP 000000
+  attempt 12: HTTP 000000
+  attempt 13: HTTP 000000
+  attempt 14: HTTP 000000
+  attempt 15: HTTP 000000
+  attempt 16: HTTP 000000
+  attempt 17: HTTP 000000
+  attempt 18: HTTP 000000
+  attempt 19: HTTP 000000
+  attempt 20: HTTP 000000
+  attempt 21: HTTP 000000
+  attempt 22: HTTP 000000
+  attempt 23: HTTP 200
+
+=== PASS: schtasks S4U survived reboot, HTTP 200 at /lms ===
+Saving snapshot...
+QEMU 8.2.2 monitor - type 'help' for more information
+(qemu) s[K[Dsa[K[D[Dsav[K[D[D[Dsave[K[D[D[D[Dsavev[K[D[D[D[D[Dsavevm[K[D[D[D[D[D[Dsavevm [K[D[D[D[D[D[D[Dsavevm s[K[D[D[D[D[D[D[D[Dsavevm sc[K[D[D[D[D[D[D[D[D[Dsavevm sch[K[D[D[D[D[D[D[D[D[D[Dsavevm scht[K[D[D[D[D[D[D[D[D[D[D[Dsavevm schta[K[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtas[K[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtask[K[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-t[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-te[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-tes[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-test[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-teste[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-tested[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-tested-[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-tested-2[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-tested-20[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-tested-202[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-tested-2026[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-tested-2026-[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-tested-2026-0[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-tested-2026-03[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-tested-2026-03-[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-tested-2026-03-2[K[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[D[Dsavevm schtasks-tested-2026-03-27[K
+Terminating instance...
+TERMINATINGINSTANCES	i-09cd142cfaa5dd507
+CURRENTSTATE	32	shutting-down
+PREVIOUSSTATE	16	running

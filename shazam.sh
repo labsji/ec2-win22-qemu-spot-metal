@@ -101,24 +101,67 @@ cmd_up() {
 
     # Cloud-init userdata
     USERDATA='#!/bin/bash
+set -e
+# Wait for EBS volume device
 for i in $(seq 1 30); do
   for d in /dev/nvme1n1 /dev/nvme2n1 /dev/xvdf; do
-    [ -b "${d}p1" ] 2>/dev/null && DEV="$d" && break 2
-    [ -b "${d}1" ] 2>/dev/null && DEV="$d" && break 2
+    [ -b "$d" ] 2>/dev/null && DEV="$d" && break 2
   done; sleep 2
 done
 [ -z "${DEV:-}" ] && exit 1
-mount LABEL=var /var; mount LABEL=usr /usr; mount LABEL=opt /opt
-mkdir -p /data; mount LABEL=data /data
-grep -q LABEL=var /etc/fstab || cat >> /etc/fstab <<FSTAB
+
+# Check if volume has partitions (returning user) or is raw (fresh)
+if blkid "${DEV}p1" >/dev/null 2>&1 || blkid "${DEV}1" >/dev/null 2>&1; then
+  # --- EXISTING VOLUME: mount and auto-start ---
+  mount LABEL=var /var; mount LABEL=usr /usr; mount LABEL=opt /opt
+  mkdir -p /data; mount LABEL=data /data
+  grep -q LABEL=var /etc/fstab || cat >> /etc/fstab <<FSTAB
 LABEL=var /var ext4 defaults,nofail 0 2
 LABEL=usr /usr ext4 defaults,nofail 0 2
 LABEL=opt /opt ext4 defaults,nofail 0 2
 LABEL=data /data ext4 defaults,nofail 0 2
 FSTAB
-systemctl daemon-reexec
-if [ -f /opt/winserver2022-auto.qcow2 ]; then
-  sudo -u ubuntu bash /opt/run-windows.sh 2>/dev/null || true
+  systemctl daemon-reexec
+  [ -f /opt/winserver2022-auto.qcow2 ] && sudo -u ubuntu bash /opt/run-windows.sh 2>/dev/null || true
+else
+  # --- FRESH VOLUME: partition, install QEMU, download ISOs ---
+  echo "Fresh volume detected. Partitioning $DEV..."
+  parted -s "$DEV" mklabel gpt \
+    mkpart var ext4 1MiB 24GiB \
+    mkpart usr ext4 24GiB 72GiB \
+    mkpart opt ext4 72GiB 192GiB \
+    mkpart data ext4 192GiB 100%
+  sleep 2
+  # Detect partition naming (p1 vs 1)
+  [ -b "${DEV}p1" ] && S="p" || S=""
+  for i in 1 2 3 4; do
+    mkfs.ext4 -q "${DEV}${S}${i}"
+  done
+  e2label "${DEV}${S}1" var; e2label "${DEV}${S}2" usr
+  e2label "${DEV}${S}3" opt; e2label "${DEV}${S}4" data
+  mount "${DEV}${S}1" /var; mount "${DEV}${S}2" /usr; mount "${DEV}${S}3" /opt
+  mkdir -p /data; mount "${DEV}${S}4" /data
+  cat >> /etc/fstab <<FSTAB
+LABEL=var /var ext4 defaults,nofail 0 2
+LABEL=usr /usr ext4 defaults,nofail 0 2
+LABEL=opt /opt ext4 defaults,nofail 0 2
+LABEL=data /data ext4 defaults,nofail 0 2
+FSTAB
+  systemctl daemon-reexec
+
+  # Install QEMU/KVM
+  apt-get update -qq
+  apt-get install -y -qq qemu-system-x86 qemu-utils ovmf libvirt-daemon-system sshpass socat dosfstools > /dev/null
+
+  # Download ISOs
+  echo "Downloading Windows Server 2022 eval ISO (~5GB)..."
+  curl -fsSL -o /data/win2022.iso "https://go.microsoft.com/fwlink/p/?LinkID=2195280&clcid=0x409&culture=en-us&country=US" || \
+    curl -fsSL -o /data/win2022.iso "https://software-static.download.prss.microsoft.com/sg/download/888969d5-f34g-4e03-ac9d-1f9786c66749/SERVER_EVAL_x64FRE_en-us.iso"
+  echo "Downloading VirtIO drivers..."
+  curl -fsSL -o /data/virtio-win.iso "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
+
+  touch /opt/.shazam-fresh-setup-done
+  echo "Fresh setup complete. Run install-windows.sh to install Windows."
 fi'
 
     info "Launching $INSTANCE_TYPE spot instance..."
@@ -130,8 +173,21 @@ fi'
         --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":30}}]' \
         --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=shazam-$REGION}]" \
         --user-data "$USERDATA" \
-        --query 'Instances[0].InstanceId' --output text 2>/dev/null) \
-        || die "Launch failed. Check spot vCPU quota (need 96 for $INSTANCE_TYPE). Request increase at: https://console.aws.amazon.com/servicequotas"
+        --query 'Instances[0].InstanceId' --output text 2>/dev/null)
+    if [ -z "${INSTANCE_ID:-}" ] && [ "$INSTANCE_TYPE" = "c5.metal" ]; then
+        warn "c5.metal unavailable, trying c5n.metal..."
+        INSTANCE_TYPE="c5n.metal"
+        INSTANCE_ID=$(aws ec2 run-instances \
+            --image-id "$AMI" --instance-type "$INSTANCE_TYPE" \
+            --key-name "$KEY_NAME" --security-group-ids "$SG_ID" --subnet-id "$SUBNET_ID" \
+            --instance-market-options '{"MarketType":"spot","SpotOptions":{"SpotInstanceType":"one-time"}}' \
+            --associate-public-ip-address \
+            --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":30}}]' \
+            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=shazam-$REGION}]" \
+            --user-data "$USERDATA" \
+            --query 'Instances[0].InstanceId' --output text 2>/dev/null)
+    fi
+    [ -z "${INSTANCE_ID:-}" ] && die "Launch failed. Check spot vCPU quota (need 96 for metal). Request increase at: https://console.aws.amazon.com/servicequotas"
 
     info "Waiting for instance..."
     aws ec2 wait instance-running --instance-ids "$INSTANCE_ID"
@@ -145,9 +201,30 @@ fi'
 
     save
 
-    info "Waiting for cloud-init (30s)..."
-    sleep 30
-    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" "echo READY" 2>/dev/null || warn "SSH not ready yet, try: bash shazam.sh ssh"
+    info "Waiting for cloud-init..."
+    for i in $(seq 1 60); do
+        STATUS=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" "cloud-init status 2>/dev/null || echo running" 2>/dev/null)
+        case "$STATUS" in *done*|*error*) break ;; esac
+        sleep 10
+    done
+
+    # If fresh volume, copy install files and kick off Windows install
+    if ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" "test -f /opt/.shazam-fresh-setup-done" 2>/dev/null; then
+        info "Fresh volume — copying install files..."
+        scp -o StrictHostKeyChecking=no -i "$KEY_FILE" \
+            "$SCRIPT_DIR/install-windows.sh" "$SCRIPT_DIR/run-windows.sh" \
+            "$SCRIPT_DIR/stop-windows.sh" "$SCRIPT_DIR/hw-id.conf" \
+            "$SCRIPT_DIR/floppy.img" \
+            "ubuntu@$PUBLIC_IP:/opt/"
+        ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" "chmod +x /opt/install-windows.sh /opt/run-windows.sh"
+        info "Starting Windows install (~30 min)..."
+        ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" "nohup bash /opt/install-windows.sh > /tmp/win-install.log 2>&1 &"
+        warn "Windows installing in background. Monitor: bash shazam.sh ssh then tail -f /tmp/win-install.log"
+    elif ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" "test -f /opt/winserver2022-auto.qcow2" 2>/dev/null; then
+        info "Existing Windows VM detected."
+    else
+        warn "Cloud-init may still be running. Check: bash shazam.sh ssh"
+    fi
 
     show_info
 }

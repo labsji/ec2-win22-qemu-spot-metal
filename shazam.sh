@@ -113,55 +113,48 @@ done
 # Check if volume has partitions (returning user) or is raw (fresh)
 if blkid "${DEV}p1" >/dev/null 2>&1 || blkid "${DEV}1" >/dev/null 2>&1; then
   # --- EXISTING VOLUME: mount and auto-start ---
-  mount LABEL=var /var; mount LABEL=usr /usr; mount LABEL=opt /opt
-  mkdir -p /data; mount LABEL=data /data
-  grep -q LABEL=var /etc/fstab || cat >> /etc/fstab <<FSTAB
-LABEL=var /var ext4 defaults,nofail 0 2
-LABEL=usr /usr ext4 defaults,nofail 0 2
+  # Old volumes have 4 partitions (var/usr/opt/data), new have 2 (opt/data)
+  mount LABEL=opt /opt 2>/dev/null || true
+  mkdir -p /data; mount LABEL=data /data 2>/dev/null || true
+  # Legacy mounts for old 4-partition volumes (nofail — ok if missing)
+  mount LABEL=var /var 2>/dev/null || true
+  mount LABEL=usr /usr 2>/dev/null || true
+  grep -q LABEL=opt /etc/fstab || cat >> /etc/fstab <<FSTAB
 LABEL=opt /opt ext4 defaults,nofail 0 2
 LABEL=data /data ext4 defaults,nofail 0 2
+LABEL=var /var ext4 defaults,nofail 0 2
+LABEL=usr /usr ext4 defaults,nofail 0 2
 FSTAB
-  systemctl daemon-reexec
   [ -f /opt/winserver2022-auto.qcow2 ] && sudo -u ubuntu bash /opt/run-windows.sh 2>/dev/null || true
 else
   # --- FRESH VOLUME: partition, install QEMU, download ISOs ---
   echo "Fresh volume detected. Partitioning $DEV..."
   parted -s "$DEV" mklabel gpt \
-    mkpart var ext4 1MiB 24GiB \
-    mkpart usr ext4 24GiB 72GiB \
-    mkpart opt ext4 72GiB 192GiB \
+    mkpart opt ext4 1MiB 192GiB \
     mkpart data ext4 192GiB 100%
   sleep 2
-  # Detect partition naming (p1 vs 1)
   [ -b "${DEV}p1" ] && S="p" || S=""
-  for i in 1 2 3 4; do
-    mkfs.ext4 -q "${DEV}${S}${i}"
-  done
-  e2label "${DEV}${S}1" var; e2label "${DEV}${S}2" usr
-  e2label "${DEV}${S}3" opt; e2label "${DEV}${S}4" data
-  mount "${DEV}${S}1" /var; mount "${DEV}${S}2" /usr; mount "${DEV}${S}3" /opt
-  mkdir -p /data; mount "${DEV}${S}4" /data
+  mkfs.ext4 -q -L opt "${DEV}${S}1"
+  mkfs.ext4 -q -L data "${DEV}${S}2"
+  mount "${DEV}${S}1" /opt
+  mkdir -p /data; mount "${DEV}${S}2" /data
   cat >> /etc/fstab <<FSTAB
-LABEL=var /var ext4 defaults,nofail 0 2
-LABEL=usr /usr ext4 defaults,nofail 0 2
 LABEL=opt /opt ext4 defaults,nofail 0 2
 LABEL=data /data ext4 defaults,nofail 0 2
 FSTAB
-  systemctl daemon-reexec
 
   # Install QEMU/KVM
   apt-get update -qq
-  apt-get install -y -qq qemu-system-x86 qemu-utils ovmf libvirt-daemon-system sshpass socat dosfstools > /dev/null
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-x86 qemu-utils ovmf libvirt-daemon-system sshpass socat dosfstools > /dev/null 2>&1
 
   # Download ISOs
   echo "Downloading Windows Server 2022 eval ISO (~5GB)..."
-  curl -fsSL -o /data/win2022.iso "https://go.microsoft.com/fwlink/p/?LinkID=2195280&clcid=0x409&culture=en-us&country=US" || \
-    curl -fsSL -o /data/win2022.iso "https://software-static.download.prss.microsoft.com/sg/download/888969d5-f34g-4e03-ac9d-1f9786c66749/SERVER_EVAL_x64FRE_en-us.iso"
+  curl -fsSL -o /data/win2022.iso "https://go.microsoft.com/fwlink/p/?LinkID=2195280&clcid=0x409&culture=en-us&country=US" || true
   echo "Downloading VirtIO drivers..."
-  curl -fsSL -o /data/virtio-win.iso "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
+  curl -fsSL -o /data/virtio-win.iso "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso" || true
 
   touch /opt/.shazam-fresh-setup-done
-  echo "Fresh setup complete. Run install-windows.sh to install Windows."
+  echo "Fresh setup complete."
 fi'
 
     info "Launching $INSTANCE_TYPE spot instance..."

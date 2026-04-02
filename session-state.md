@@ -1,46 +1,39 @@
-# Session Summary — 2026-03-24
+# Session Summary — 2026-04-02
 
 ## What was accomplished
 
-### Non-admin user test ✅
-- Evaluator (evaluator/Eval2026!) gets HTTP 200 at `/lms` — can browse LMS without admin rights
-- Install requires admin (NSSM, firewall, choco) — expected, NSIS enforces UAC
-- WSL distros are per-user — service must run under admin account via NSSM ObjectName
+### Wiki tested ✅
+- Frappe Wiki V3 (rc.1) — HTTP 200 at /wiki/ on first try
+- No dependency issues (unlike LMS which needed payments)
+- Simplest Frappe app — validates the ikuku pattern cleanly
+- Snapshot: wiki-tested-2026-04-02
 
-### Regression test (ikuku rename) ✅
-- FrappeLMS service name works
-- lms-service.ps1 starts containers, waits for systemd, refreshes port proxy
-- Confirmed on c5n.metal spot instance
+### Container images saved for full.exe
+- lms-images.tar (3.1GB) saved at /opt/lms-images.tar on EBS
+- Contains: mariadb:10.8 + redis:alpine + frappe/bench:latest
+- Ready for NSIS full variant build
 
-### GitHub Actions workflow fixed
-- Changed from release trigger (caused email spam) to workflow_dispatch + push on feature branch
-- Lite .exe builds successfully (93.6KB) on windows-latest runner
-- Artifact downloadable as zip from Actions tab
-
-### Bug found: init.sh on EBS volume
-- Old init.sh (without --resolve-deps) was baked into /opt/frappe-lms/ on the EBS volume
-- Fresh installs via install.ps1 copy docker/ dir from repo → correct init.sh deployed
-- Only affects snapshot restore scenarios — fixed in-place with sed
+### Wiki scaffolded in ikuku repo
+- Wiki/ folder with docker-compose, init.sh, all scripts
+- No --resolve-deps needed (wiki has no extra deps)
+- Route: /wiki/
 
 ## Current state
 
-### Git
-- Branch: labsji/frappe-lms:breeze-windows-installer-clean
-- Last commit: 677b98b8 (workflow fix)
-- 11 commits ahead of origin/develop
-- Push via: GIT_SSH_COMMAND="ssh -i ~/.ssh/dspace-dev-key.pem" git push origin breeze-windows-installer-clean
+### Git repos
+- labsji/ikuku: main, last commit 05345e8 (Wiki added)
+- labsji/ec2-win22-qemu-spot-metal: main, shazam fixes
+- labsji/frappe-lms: PR #2268 closed, kept for reference
 
 ### EBS volume (vol-049250470b06c4ba7, ap-south-1a)
-- Snapshots inside winserver2022-auto.qcow2:
-  - lms-working-2026-03-23 — pre-refactor (BreezeLMS service, C:\breeze\)
-  - ikuku-tested-2026-03-24 — post-refactor (FrappeLMS service, C:\FrappeLMS\), evaluator tested
-- /opt/frappe-lms/init.sh patched with --resolve-deps (in ikuku-tested snapshot)
+- Snapshots: lms-working-2026-03-23, ikuku-tested-2026-03-24, schtasks-tested-2026-03-27, wiki-tested-2026-04-02
+- /opt/lms-images.tar (3.1GB) for full offline installer
 
-### Instance: terminated
+### No running instances
 
 ## Remaining work
-1. De-AI and humanize scripts for PR readiness
-2. Build full (offline) installer — needs pre-built container image with frappe+payments+lms baked in
-3. Add WIN_PASSWORD to NSIS wizard or find passwordless NSSM approach
-4. Sample LMS course content (next iteration)
-5. Update launch-metal-spot.sh to not hardcode volume ID
+1. Browse Wiki in browser (visual check of social features)
+2. Build full.exe with NSIS (images tar is ready)
+3. ERPNext — reserved for premium path (eval → Frappe Cloud commission)
+4. shazam fresh-volume retest
+5. Sample data / promotion content

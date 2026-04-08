@@ -1,0 +1,10 @@
+=== Started Fri Apr  3 09:07:25 AM UTC 2026 ===
+Downloading full.zip on Linux host...
+-rw-rw-r-- 1 ubuntu ubuntu 1007M Apr  3 05:48 /tmp/ikuku-full.zip
+Copying to Windows...
+scp: dest open "C:/Users/Administrator/Desktop/ikuku-full.zip": Failure
+scp: failed to upload file /tmp/ikuku-full.zip to C:/Users/Administrator/Desktop/ikuku-full.zip
+TERMINATINGINSTANCES	i-0bac365513addb688
+CURRENTSTATE	32	shutting-down
+PREVIOUSSTATE	16	running
+Instance terminated at Fri Apr  3 09:09:01 AM UTC 2026

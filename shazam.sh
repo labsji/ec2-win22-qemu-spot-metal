@@ -15,6 +15,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 STATE="$SCRIPT_DIR/.shazam-state"
 INSTANCE_TYPE="c5.metal"
+SNAPSHOT_ID="snap-056a985437fa75121"
 
 die() { echo "❌ $*" >&2; exit 1; }
 info() { echo "➡️  $1"; }
@@ -77,11 +78,11 @@ cmd_up() {
 
     # EBS volume
     if [ -z "${VOL_ID:-}" ]; then
-        info "Creating 250GB persistent EBS volume in $AZ..."
+        info "Creating 250GB EBS volume from snapshot in $AZ..."
         VOL_ID=$(aws ec2 create-volume --availability-zone "$AZ" --size 250 --volume-type gp3 \
+            --snapshot-id "$SNAPSHOT_ID" \
             --tag-specifications "ResourceType=volume,Tags=[{Key=Name,Value=shazam-$REGION}]" --query 'VolumeId' --output text)
         aws ec2 wait volume-available --volume-ids "$VOL_ID"
-        warn "New volume — first launch will install QEMU and download ISOs (~30 min)"
     fi
 
     # Check if instance already running
@@ -125,7 +126,14 @@ LABEL=data /data ext4 defaults,nofail 0 2
 LABEL=var /var ext4 defaults,nofail 0 2
 LABEL=usr /usr ext4 defaults,nofail 0 2
 FSTAB
-  [ -f /opt/winserver2022-auto.qcow2 ] && sudo -u ubuntu bash /opt/run-windows.sh 2>/dev/null || true
+  [ -f /opt/winserver2022-auto.qcow2 ] && {
+    # Install QEMU if needed (new instance from snapshot)
+    which qemu-system-x86_64 >/dev/null 2>&1 || {
+      apt-get update -qq
+      DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-x86 qemu-utils ovmf sshpass socat > /dev/null 2>&1
+    }
+    sudo -u ubuntu bash /opt/run-windows.sh 2>/dev/null || true
+  }
 else
   # --- FRESH VOLUME: partition, install QEMU, download ISOs ---
   echo "Fresh volume detected. Partitioning $DEV..."

@@ -125,3 +125,7 @@ See [DESIGN.md](DESIGN.md) for:
 - QEMU configuration
 - Troubleshooting
 - Exposing WSL2 services to LAN
+
+## Credits
+
+Co-created with [Kiro](https://kiro.dev) — from spot instance orchestration to QCOW2 snapshot management, every script was pair-programmed in `kiro-cli`.

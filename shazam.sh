@@ -83,6 +83,7 @@ cmd_up() {
             --snapshot-id "$SNAPSHOT_ID" \
             --tag-specifications "ResourceType=volume,Tags=[{Key=Name,Value=shazam-$REGION}]" --query 'VolumeId' --output text)
         aws ec2 wait volume-available --volume-ids "$VOL_ID"
+        save
     fi
 
     # Check if instance already running

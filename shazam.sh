@@ -176,20 +176,7 @@ fi'
         --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=shazam-$REGION}]" \
         --user-data "$USERDATA" \
         --query 'Instances[0].InstanceId' --output text 2>/dev/null) || true
-    if [ -z "${INSTANCE_ID:-}" ] && [ "$INSTANCE_TYPE" = "c5.metal" ]; then
-        INSTANCE_TYPE="c5n.metal"
-        warn "c5.metal unavailable, trying $INSTANCE_TYPE..."
-        INSTANCE_ID=$(aws ec2 run-instances \
-            --image-id "$AMI" --instance-type "$INSTANCE_TYPE" \
-            --key-name "$KEY_NAME" --security-group-ids "$SG_ID" --subnet-id "$SUBNET_ID" \
-            --instance-market-options '{"MarketType":"spot","SpotOptions":{"SpotInstanceType":"one-time"}}' \
-            --associate-public-ip-address \
-            --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":30}}]' \
-            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=shazam-$REGION}]" \
-            --user-data "$USERDATA" \
-            --query 'Instances[0].InstanceId' --output text 2>/dev/null) || true
-    fi
-    [ -z "${INSTANCE_ID:-}" ] && die "Launch failed. Check spot vCPU quota (need 96 for metal). Request increase at: https://console.aws.amazon.com/servicequotas"
+    [ -z "${INSTANCE_ID:-}" ] && die "Launch failed. c5.metal spot unavailable in $REGION. Try again later or check spot vCPU quota (need 96): https://console.aws.amazon.com/servicequotas"
 
     info "Waiting for instance..."
     aws ec2 wait instance-running --instance-ids "$INSTANCE_ID"

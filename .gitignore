@@ -1,6 +1,8 @@
-.instance-id
-.instance-ip
 .shazam-state
-*.qcow2
-*.iso
-chat-history
+.instance-ip
+.instance-id
+.volume-id
+secrets/
+floppy.img
+*.log
+*.txt

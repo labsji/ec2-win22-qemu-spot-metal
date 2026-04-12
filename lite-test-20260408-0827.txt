@@ -1,8 +1,0 @@
-=== ikuku lite LAN test — v0.1.7 — Wed Apr  8 08:27:51 AM UTC 2026 ===
-IP: 35.154.69.47
---- Waiting for Windows SSH ---
-FAIL: Windows SSH timeout (20min)
-➡️  Region: ap-south-1
-➡️  Terminating i-0ae723137dddd82c5...
-➡️  Instance terminated. EBS volume vol-0487e96779caa9677 preserved (no ongoing cost when detached).
-⚠️  To delete ALL resources: bash shazam.sh destroy

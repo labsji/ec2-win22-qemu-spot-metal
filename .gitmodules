@@ -1,3 +1,0 @@
-[submodule "secrets"]
-	path = secrets
-	url = https://git-codecommit.ap-south-1.amazonaws.com/v1/repos/metal-spot4win-secrets

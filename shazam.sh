@@ -54,10 +54,13 @@ cmd_up() {
     KEY_NAME="${KEY_NAME:-shazam-$(whoami)}"
     KEY_FILE="$HOME/.ssh/$KEY_NAME"
     if [ ! -f "$KEY_FILE" ]; then
-        info "Creating SSH key..."
-        mkdir -p ~/.ssh && ssh-keygen -t ed25519 -f "$KEY_FILE" -N "" -q
-        aws ec2 import-key-pair --key-name "$KEY_NAME" --public-key-material fileb://"$KEY_FILE.pub" 2>/dev/null || true
+        info "Creating SSH key in ~/.ssh..."
+        mkdir -p ~/.ssh && chmod 700 ~/.ssh
+        ssh-keygen -t ed25519 -f "$KEY_FILE" -N "" -q
     fi
+    # Ensure key is registered with EC2
+    aws ec2 describe-key-pairs --key-names "$KEY_NAME" > /dev/null 2>&1 || \
+        aws ec2 import-key-pair --key-name "$KEY_NAME" --public-key-material fileb://"$KEY_FILE.pub" > /dev/null
 
     # Security group
     if [ -z "${SG_ID:-}" ]; then

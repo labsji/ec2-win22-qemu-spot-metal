@@ -43,11 +43,19 @@ bash shazam.sh destroy   # delete EVERYTHING, zero ongoing cost
 
 ## Why?
 
-- Windows metal instances (e.g., `i3en.metal`) cost ~$5/hr in Mumbai
-- Linux metal instances (e.g., `c5.metal`) cost ~$1.5/hr as spot
-- This project runs Windows Server 2022 as a QEMU/KVM VM on Linux metal spot instances
-- WSL2 inside Windows provides the Linux environment for building/packaging software
-- Persistent EBS volume survives spot terminations — no data loss
+**Why metal instances?** Regular EC2 instances run inside a hypervisor — you can't run another hypervisor (QEMU/KVM) inside them. Metal instances give you bare-metal access with hardware virtualization (VT-x), so QEMU can run a Windows VM with near-native performance.
+
+**Why Linux hosting Windows?** AWS Windows metal instances (`i3en.metal`) cost ~$5/hr. Linux metal spot instances (`c5.metal`) cost ~$1.50/hr — 70% cheaper. Running Windows as a QEMU/KVM guest on Linux gives you a full Windows Server 2022 environment at Linux spot prices.
+
+**Why Windows → WSL2 → Linux (the nesting)?** Many open-source server applications (Frappe, ERPNext, etc.) run on Linux but need to be packaged as Windows installers (.exe) for enterprise users. The stack is:
+
+1. **Linux metal host** — cheap, runs QEMU
+2. **Windows VM** — the target platform for building/testing .exe installers
+3. **WSL2 inside Windows** — provides the Linux environment (podman, containers) that the installer sets up for end users
+
+This mirrors exactly what an end user's Windows machine looks like, making it the ideal build and test environment.
+
+**Why spot instances?** Metal instances are expensive even on Linux. Spot pricing saves 60-70%. The persistent EBS volume survives spot terminations — your Windows VM, WSL2 setup, and all data persist across spot cycles.
 
 ## Architecture
 

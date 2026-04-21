@@ -15,7 +15,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 STATE="$SCRIPT_DIR/.shazam-state"
 INSTANCE_TYPE="c5.metal"
-SNAPSHOT_ID="snap-056a985437fa75121"
+SNAPSHOT_ID="${SHAZAM_SNAPSHOT_ID:-}"
 
 die() { echo "❌ $*" >&2; exit 1; }
 info() { echo "➡️  $1"; }
@@ -81,10 +81,16 @@ cmd_up() {
 
     # EBS volume
     if [ -z "${VOL_ID:-}" ]; then
-        info "Creating 250GB EBS volume from snapshot in $AZ..."
-        VOL_ID=$(aws ec2 create-volume --availability-zone "$AZ" --size 250 --volume-type gp3 \
-            --snapshot-id "$SNAPSHOT_ID" \
-            --tag-specifications "ResourceType=volume,Tags=[{Key=Name,Value=shazam-$REGION}]" --query 'VolumeId' --output text)
+        if [ -n "$SNAPSHOT_ID" ]; then
+            info "Creating 250GB EBS volume from snapshot in $AZ..."
+            VOL_ID=$(aws ec2 create-volume --availability-zone "$AZ" --size 250 --volume-type gp3 \
+                --snapshot-id "$SNAPSHOT_ID" \
+                --tag-specifications "ResourceType=volume,Tags=[{Key=Name,Value=shazam-$REGION}]" --query 'VolumeId' --output text)
+        else
+            info "Creating 250GB EBS volume (fresh) in $AZ..."
+            VOL_ID=$(aws ec2 create-volume --availability-zone "$AZ" --size 250 --volume-type gp3 \
+                --tag-specifications "ResourceType=volume,Tags=[{Key=Name,Value=shazam-$REGION}]" --query 'VolumeId' --output text)
+        fi
         aws ec2 wait volume-available --volume-ids "$VOL_ID"
         save
     fi

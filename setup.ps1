@@ -32,12 +32,11 @@ Invoke-WebRequest -Uri https://wslstorestorage.blob.core.windows.net/wslblob/wsl
 msiexec /i $wslMsi /quiet /norestart
 Start-Sleep 10
 
-# Schedule part 2: Windows Update + new WSL + Ubuntu (runs after reboot)
+# Schedule part 2: Windows Update (runs after reboot, as SYSTEM)
 @'
-# Part 2 - runs after reboot for WSL features
+# Part 2 - install updates, reboot, then part 3 does WSL
 Add-Content C:\setup-log.txt "Part2 started at $(Get-Date)"
 
-# Install Windows Updates via COM as SYSTEM
 $session = New-Object -ComObject Microsoft.Update.Session
 $searcher = $session.CreateUpdateSearcher()
 $results = $searcher.Search("IsInstalled=0")
@@ -53,31 +52,38 @@ if ($results.Updates.Count -gt 0) {
     Add-Content C:\setup-log.txt "Installed: result=$($r.ResultCode) reboot=$($r.RebootRequired) at $(Get-Date)"
 }
 
-# Install new WSL from GitHub (curl is faster than Invoke-WebRequest)
+# Schedule part 3 for after reboot
+$action3 = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-ExecutionPolicy Bypass -File C:\setup-part3.ps1'
+$trigger3 = New-ScheduledTaskTrigger -AtStartup
+Register-ScheduledTask -TaskName 'SetupPart3' -Action $action3 -Trigger $trigger3 -User 'SYSTEM' -RunLevel Highest -Force
+
+Unregister-ScheduledTask -TaskName SetupPart2 -Confirm:$false
+Add-Content C:\setup-log.txt "Part2 done, part3 scheduled at $(Get-Date)"
+shutdown /r /t 30
+'@ | Out-File -FilePath 'C:\setup-part2.ps1' -Encoding UTF8
+
+# Part 3: WSL + Ubuntu + podman (runs after update reboot)
+@'
+Add-Content C:\setup-log.txt "Part3 started at $(Get-Date)"
+
+# Install new WSL from GitHub
 $wslMsi = "$env:TEMP\wsl.msi"
 & curl.exe -L -o $wslMsi https://github.com/microsoft/WSL/releases/download/2.6.3/wsl.2.6.3.0.x64.msi
 msiexec /i $wslMsi /quiet /norestart
 Start-Sleep 15
 Add-Content C:\setup-log.txt "WSL MSI installed at $(Get-Date)"
 
-# Set WSL2 default and install Ubuntu
 & "C:\Program Files\WSL\wsl.exe" --set-default-version 2
 & "C:\Program Files\WSL\wsl.exe" --install Ubuntu --no-launch
 Add-Content C:\setup-log.txt "Ubuntu installed at $(Get-Date)"
 
-# Configure WSL Ubuntu - install dev tools
-& "C:\Program Files\WSL\wsl.exe" -u root -- bash -c "apt-get update && apt-get install -y build-essential git curl wget unzip python3 python3-pip python3-venv jq tree htop podman podman-compose > /dev/null 2>&1 && curl -s https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip && unzip -qo /tmp/awscliv2.zip -d /tmp && /tmp/aws/install > /dev/null 2>&1 && rm -rf /tmp/aws /tmp/awscliv2.zip && echo 'unqualified-search-registries = [\"docker.io\"]' >> /etc/containers/registries.conf"
+# Configure WSL Ubuntu - install dev tools + podman
+& "C:\Program Files\WSL\wsl.exe" -u root -- bash -c "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl wget unzip python3 python3-pip python3-venv jq tree htop podman podman-compose > /dev/null 2>&1 && curl -s https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip && unzip -qo /tmp/awscliv2.zip -d /tmp && /tmp/aws/install > /dev/null 2>&1 && rm -rf /tmp/aws /tmp/awscliv2.zip && echo 'unqualified-search-registries = [""docker.io""]' >> /etc/containers/registries.conf"
 Add-Content C:\setup-log.txt "WSL Ubuntu configured at $(Get-Date)"
 
-# Cleanup
-Unregister-ScheduledTask -TaskName SetupPart2 -Confirm:$false
-
-# Reboot if updates needed it
-if ($results.Updates.Count -gt 0 -and $r.RebootRequired) {
-    Add-Content C:\setup-log.txt "Rebooting for updates"
-    shutdown /r /t 60
-}
-'@ | Out-File -FilePath 'C:\setup-part2.ps1' -Encoding UTF8
+Unregister-ScheduledTask -TaskName SetupPart3 -Confirm:$false
+Add-Content C:\setup-log.txt "Part3 done — all setup complete at $(Get-Date)"
+'@ | Out-File -FilePath 'C:\setup-part3.ps1' -Encoding UTF8
 
 # Register part2 as SYSTEM task (survives DISM reboot)
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-ExecutionPolicy Bypass -File C:\setup-part2.ps1'

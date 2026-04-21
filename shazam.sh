@@ -68,7 +68,7 @@ cmd_up() {
         VPC_ID=$(aws ec2 describe-vpcs --filters Name=isDefault,Values=true --query 'Vpcs[0].VpcId' --output text)
         SG_ID=$(aws ec2 create-security-group --group-name "shazam-$REGION" --description "metal-spot4win" --vpc-id "$VPC_ID" --query 'GroupId' --output text 2>/dev/null || \
             aws ec2 describe-security-groups --group-names "shazam-$REGION" --query 'SecurityGroups[0].GroupId' --output text)
-        for port in 22 2222 3389 5900; do
+        for port in 22 2222 3389 5900 8000 8001; do
             aws ec2 authorize-security-group-ingress --group-id "$SG_ID" --protocol tcp --port $port --cidr 0.0.0.0/0 2>/dev/null || true
         done
     fi

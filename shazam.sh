@@ -47,6 +47,20 @@ PUBLIC_IP="${PUBLIC_IP:-}"
 EOF
 }
 
+copy_install_files() {
+    info "Copying install files..."
+    scp -o StrictHostKeyChecking=no -i "$KEY_FILE" \
+        "$SCRIPT_DIR/install-windows.sh" "$SCRIPT_DIR/run-windows.sh" \
+        "$SCRIPT_DIR/stop-windows.sh" "$SCRIPT_DIR/hw-id.conf" \
+        "$SCRIPT_DIR/floppy.img" \
+        "ubuntu@$PUBLIC_IP:/tmp/"
+    ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" \
+        "sudo mv /tmp/install-windows.sh /tmp/run-windows.sh /tmp/stop-windows.sh /tmp/hw-id.conf /tmp/floppy.img /opt/ && sudo chmod +x /opt/install-windows.sh /opt/run-windows.sh /opt/stop-windows.sh"
+    info "Starting Windows install (~30 min)..."
+    ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" "nohup sudo bash /opt/install-windows.sh > /tmp/win-install.log 2>&1 &"
+    warn "Windows installing in background. Monitor: bash shazam.sh ssh then tail -f /tmp/win-install.log"
+}
+
 # --- Up ---
 cmd_up() {
     preflight; load
@@ -102,7 +116,13 @@ cmd_up() {
         if [ "$ISTATE" = "running" ]; then
             PUBLIC_IP=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
             info "Already running: $INSTANCE_ID at $PUBLIC_IP"
-            save; show_info; return
+            save
+            # Check if fresh volume still needs install files
+            if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" \
+                "test -f /opt/.shazam-fresh-setup-done && ! test -f /opt/install-windows.sh" 2>/dev/null; then
+                copy_install_files
+            fi
+            show_info; return
         fi
     fi
 
@@ -209,17 +229,7 @@ fi'
 
     # If fresh volume, copy install files and kick off Windows install
     if ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" "test -f /opt/.shazam-fresh-setup-done" 2>/dev/null; then
-        info "Fresh volume — copying install files..."
-        scp -o StrictHostKeyChecking=no -i "$KEY_FILE" \
-            "$SCRIPT_DIR/install-windows.sh" "$SCRIPT_DIR/run-windows.sh" \
-            "$SCRIPT_DIR/stop-windows.sh" "$SCRIPT_DIR/hw-id.conf" \
-            "$SCRIPT_DIR/floppy.img" \
-            "ubuntu@$PUBLIC_IP:/tmp/"
-        ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" \
-            "sudo mv /tmp/install-windows.sh /tmp/run-windows.sh /tmp/stop-windows.sh /tmp/hw-id.conf /tmp/floppy.img /opt/ && sudo chmod +x /opt/install-windows.sh /opt/run-windows.sh /opt/stop-windows.sh"
-        info "Starting Windows install (~30 min)..."
-        ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" "nohup sudo bash /opt/install-windows.sh > /tmp/win-install.log 2>&1 &"
-        warn "Windows installing in background. Monitor: bash shazam.sh ssh then tail -f /tmp/win-install.log"
+        copy_install_files
     elif ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" "test -f /opt/winserver2022-auto.qcow2" 2>/dev/null; then
         info "Existing Windows VM detected."
     else

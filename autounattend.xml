@@ -122,7 +122,7 @@
       <FirstLogonCommands>
         <SynchronousCommand wcm:action="add">
           <Order>1</Order>
-          <CommandLine>powershell.exe -ExecutionPolicy Bypass -File A:\setup.ps1</CommandLine>
+          <CommandLine>powershell.exe -ExecutionPolicy Bypass -Command "foreach($d in (Get-PSDrive -PSProvider FileSystem).Root){if(Test-Path ${d}setup.ps1){. ${d}setup.ps1; break}}"</CommandLine>
           <Description>Post-install setup</Description>
         </SynchronousCommand>
       </FirstLogonCommands>

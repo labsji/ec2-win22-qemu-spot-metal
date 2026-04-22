@@ -140,7 +140,7 @@ FSTAB
     # Install QEMU if needed (new instance from snapshot)
     which qemu-system-x86_64 >/dev/null 2>&1 || {
       apt-get update -qq
-      DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-x86 qemu-utils ovmf sshpass socat > /dev/null 2>&1
+      DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-x86 qemu-utils ovmf sshpass socat genisoimage > /dev/null 2>&1
     }
     sudo -u ubuntu bash /opt/run-windows.sh 2>/dev/null || true
   }
@@ -163,7 +163,7 @@ FSTAB
 
   # Install QEMU/KVM
   apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-x86 qemu-utils ovmf libvirt-daemon-system sshpass socat dosfstools > /dev/null 2>&1
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-x86 qemu-utils ovmf libvirt-daemon-system sshpass socat dosfstools genisoimage > /dev/null 2>&1
 
   # Download ISOs
   echo "Downloading Windows Server 2022 eval ISO (~5GB)..."

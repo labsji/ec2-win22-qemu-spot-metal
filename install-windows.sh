@@ -5,11 +5,22 @@ QCOW_PATH="/opt/winserver2022-auto.qcow2"
 WIN_ISO="/data/win2022.iso"
 VIRTIO_ISO="/data/virtio-win.iso"
 FLOPPY="/opt/floppy.img"
+ANSWER_ISO="/opt/answer.iso"
 source /opt/hw-id.conf
 
 for f in "$WIN_ISO" "$VIRTIO_ISO" "$FLOPPY"; do
   [ -f "$f" ] || { echo "ERROR: $f not found"; exit 1; }
 done
+
+# Convert floppy to ISO (UEFI doesn't support floppy)
+if [ ! -f "$ANSWER_ISO" ] || [ "$FLOPPY" -nt "$ANSWER_ISO" ]; then
+  echo "Building answer ISO from floppy..."
+  TMPDIR=$(mktemp -d)
+  sudo mount -o loop "$FLOPPY" "$TMPDIR"
+  genisoimage -o "$ANSWER_ISO" -J -r "$TMPDIR" 2>/dev/null || mkisofs -o "$ANSWER_ISO" -J -r "$TMPDIR" 2>/dev/null
+  sudo umount "$TMPDIR"
+  rmdir "$TMPDIR"
+fi
 
 echo "Creating fresh QCOW2 disk..."
 rm -f "$QCOW_PATH"
@@ -22,7 +33,7 @@ sudo nohup qemu-system-x86_64 -enable-kvm -m 16G -smp 8 -cpu host \
   -drive file="$QCOW_PATH",format=qcow2,if=virtio \
   -drive file="$WIN_ISO",media=cdrom,index=0 \
   -drive file="$VIRTIO_ISO",media=cdrom,index=1 \
-  -fda "$FLOPPY" \
+  -drive file="$ANSWER_ISO",media=cdrom,index=2 \
   -netdev user,id=net0,hostfwd=tcp::3389-:3389,hostfwd=tcp::2222-:22 \
   -device virtio-net-pci,netdev=net0 \
   -vga qxl -display none -vnc :0 \

@@ -93,7 +93,11 @@ Register-ScheduledTask -TaskName 'SetupPart2' -Action $action -Trigger $trigger 
 Add-Content C:\setup-log.txt "Part1 done, part2 scheduled at $(Get-Date)"
 
 # DISM activation LAST - this forces a reboot
-$key = (Get-Content A:\activation-key.txt -ErrorAction SilentlyContinue | Select-Object -First 1).Trim()
+$key = ""
+foreach($d in (Get-PSDrive -PSProvider FileSystem).Root) {
+    $f = Join-Path $d "activation-key.txt"
+    if (Test-Path $f) { $key = (Get-Content $f | Select-Object -First 1).Trim(); break }
+}
 if ($key -and $key -ne 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX') {
     Add-Content C:\setup-log.txt "Activating with DISM at $(Get-Date)"
     dism /online /set-edition:ServerStandard /productkey:$key /accepteula /quiet

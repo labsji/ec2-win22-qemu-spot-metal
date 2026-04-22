@@ -213,10 +213,11 @@ fi'
             "$SCRIPT_DIR/install-windows.sh" "$SCRIPT_DIR/run-windows.sh" \
             "$SCRIPT_DIR/stop-windows.sh" "$SCRIPT_DIR/hw-id.conf" \
             "$SCRIPT_DIR/floppy.img" \
-            "ubuntu@$PUBLIC_IP:/opt/"
-        ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" "chmod +x /opt/install-windows.sh /opt/run-windows.sh"
+            "ubuntu@$PUBLIC_IP:/tmp/"
+        ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" \
+            "sudo mv /tmp/install-windows.sh /tmp/run-windows.sh /tmp/stop-windows.sh /tmp/hw-id.conf /tmp/floppy.img /opt/ && sudo chmod +x /opt/install-windows.sh /opt/run-windows.sh /opt/stop-windows.sh"
         info "Starting Windows install (~30 min)..."
-        ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" "nohup bash /opt/install-windows.sh > /tmp/win-install.log 2>&1 &"
+        ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" "nohup sudo bash /opt/install-windows.sh > /tmp/win-install.log 2>&1 &"
         warn "Windows installing in background. Monitor: bash shazam.sh ssh then tail -f /tmp/win-install.log"
     elif ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i "$KEY_FILE" "ubuntu@$PUBLIC_IP" "test -f /opt/winserver2022-auto.qcow2" 2>/dev/null; then
         info "Existing Windows VM detected."

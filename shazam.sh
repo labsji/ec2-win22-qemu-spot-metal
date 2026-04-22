@@ -13,6 +13,7 @@ set -euo pipefail
 #   bash shazam.sh cost     # show estimated running cost
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export AWS_PAGER=""
 STATE="$SCRIPT_DIR/.shazam-state"
 INSTANCE_TYPE="c5.metal"
 SNAPSHOT_ID="${SHAZAM_SNAPSHOT_ID:-}"

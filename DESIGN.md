@@ -1,163 +1,119 @@
-# Design & Technical Details
+# DESIGN.md — metal-spot4win v2
 
-## Unattended Windows Install
+## Architecture: Snapshot-as-Persistence, Multi-VM
 
-### autounattend.xml
-
-- VirtIO drivers loaded via `Microsoft-Windows-PnpCustomizationsWinPE` component (NOT `Microsoft-Windows-Setup` — this was a critical discovery)
-- `DriverPaths` covers both D: and E: for the VirtIO ISO (drive letter varies)
-- Image selection: `INDEX=2` = Windows Server 2022 Standard (Desktop Experience)
-- No `ProductKey` in XML (evaluation ISO rejects KMS/retail keys during install)
-- `FirstLogonCommands` calls `A:\setup.ps1` (floppy drive)
-- Password placeholder `@@ADMIN_PASSWORD@@` injected by `build-floppy.sh`
-
-### setup.ps1 (two-phase)
-
-Phase 1 (FirstLogonCommands):
-- DNS, SSH server, RDP, Chocolatey, Git
-- WSL features enabled (Microsoft-Windows-Subsystem-Linux, VirtualMachinePlatform)
-- WSL2 kernel MSI installed
-- Part2 scheduled as SYSTEM AtStartup task
-- DISM activation last (forces reboot)
-
-Phase 2 (after reboot, as SYSTEM):
-- Windows Update to latest build (needed for new WSL)
-- WSL 2.6.3 MSI from GitHub (inbox wsl.exe is broken on Server 2022)
-- `wsl --set-default-version 2` + `wsl --install Ubuntu`
-- Dev tools: gcc, python3, aws-cli, jq, podman, podman-compose
-
-### Why two phases?
-
-1. DISM `/set-edition` forces an immediate reboot — anything after it won't run
-2. WSL2 features need a reboot to take effect
-3. The new WSL MSI from GitHub requires a newer Windows build (20348.2700+)
-4. Windows Update must run as SYSTEM (fails over SSH as regular user)
-
-## QEMU Configuration
-
-```bash
-qemu-system-x86_64 -enable-kvm -m 16G -smp 8 -cpu host \
-  -machine q35 -bios /usr/share/ovmf/OVMF.fd \
-  -uuid 062e278c-7902-4e1f-9370-970cae162986 \
-  -smbios type=1,manufacturer=QEMU,product=WinDev,... \
-  -drive file=/opt/winserver2022-auto.qcow2,format=qcow2,if=virtio \
-  -drive file=/data/win2022.iso,media=cdrom,index=0 \
-  -drive file=/data/virtio-win.iso,media=cdrom,index=1 \
-  -fda /opt/floppy.img \
-  -netdev user,id=net0,hostfwd=tcp::3389-:3389,hostfwd=tcp::2222-:22 \
-  -device virtio-net-pci,netdev=net0 \
-  -vga qxl -display none -vnc :0 \
-  -device usb-ehci -device usb-tablet \
-  -monitor unix:/tmp/qemu-mon.sock,server,nowait
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  AWS metal spot instance (m5d.metal, ap-south-1a)               │
+│  Ubuntu 24.04 + QEMU/KVM                                       │
+│                                                                 │
+│  /data (EBS vol, LABEL=data)        ← ISOs, shared tools       │
+│  /vm/ikuku (EBS vol, LABEL=win-ikuku)    ← QCOW2 + state       │
+│  /vm/prospect (EBS vol, LABEL=win-prospect) ← QCOW2 + state    │
+│                                                                 │
+│  ┌────────────────────┐  ┌────────────────────┐                 │
+│  │ VM: ikuku          │  │ VM: prospect       │                 │
+│  │ SSH:2222 RDP:3389  │  │ SSH:2223 RDP:3390  │                 │
+│  │ VNC:5900           │  │ VNC:5901           │                 │
+│  │ Windows Server 2022│  │ Windows Server 2022│                 │
+│  │ + WSL2 + podman    │  │ (clean prospect)   │                 │
+│  └────────────────────┘  └────────────────────┘                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-Key points:
-- `-machine q35` required for UEFI SATA CD-ROM boot
-- `-bios /usr/share/ovmf/OVMF.fd` (not pflash — pflash drops to EFI shell)
-- `-if=virtio` for disk (requires viostor driver in autounattend)
-- `-device virtio-net-pci` for network (requires NetKVM driver)
-- `-fda` for floppy with autounattend.xml
-- `-device usb-ehci -device usb-tablet` for VNC mouse (not `-usbdevice tablet`)
-- "Press any key to boot from CD" handled by key spam loop
+## Key Principles
 
-## File Layout
+### 1. Volumes are ephemeral, snapshots are truth
 
-### On persistent EBS
+- On `shazam up`: create fresh volumes from latest snapshots
+- On `shazam down`: snapshot all volumes, then delete them
+- Spot reclaim? No problem — snapshot already exists, create new volume from it
+- No force-detach needed. No data loss risk.
 
-| Path | Description |
-|------|-------------|
-| `/opt/install-windows.sh` | Fresh automated Windows install |
-| `/opt/run-windows.sh` | Boot existing Windows VM |
-| `/opt/stop-windows.sh` | Graceful shutdown with fallback |
-| `/opt/hw-id.conf` | Fixed SMBIOS IDs for activation persistence |
-| `/opt/floppy.img` | Floppy with autounattend.xml + setup.ps1 |
-| `/opt/winserver2022-auto.qcow2` | Current Windows disk image |
-| `/data/win2022.iso` | Windows Server 2022 evaluation ISO |
-| `/data/virtio-win.iso` | VirtIO drivers ISO |
+### 2. One filesystem per volume
 
-### In the repo
+- No partitions. Each volume = one ext4 filesystem with a LABEL.
+- Cloud-init mounts by LABEL (order-independent, self-describing).
+- Volume corruption affects only that one VM, not the whole system.
 
-| File | Description |
-|------|-------------|
-| `shazam.sh` | Single entry point — up/down/destroy/ssh/status/cost |
-| `launch-metal-spot.sh` | Launch spot instance + attach EBS |
-| `install-windows.sh` | Automated Windows install script |
-| `run-windows.sh` | Run existing VM |
-| `stop-windows.sh` | Graceful shutdown |
-| `build-floppy.sh` | Build floppy image with secrets injection |
-| `hw-id.conf` | Fixed SMBIOS hardware IDs |
-| `autounattend.xml` | Windows unattended install answer file |
-| `setup.ps1` | Post-install PowerShell (SSH, RDP, Git, activation, WSL2) |
-| `activation-key.txt` | Template placeholder for public repo |
-| `admin-password.txt` | Template placeholder for public repo |
-| `secrets/` | Git submodule → private CodeCommit repo with real keys |
+### 3. Multi-VM via separate volumes
 
-## First-Time EBS Setup
+- Each Windows VM gets its own EBS volume (100GB gp3, ~$8/mo as snapshot)
+- Port mapping: slot-based (VM index determines SSH/RDP/VNC ports)
+- Clone: snapshot one VM, create another from it (30 seconds)
 
-On the very first run, the EBS volume needs partitioning and ISOs:
+## Volume Layout
 
-### Partition and label
+| LABEL | Mount | Size | Type | Content |
+|-------|-------|------|------|---------|
+| `data` | /data | 20GB | gp3 | win2022.iso, virtio-win.iso |
+| `win-ikuku` | /vm/ikuku | 100GB | gp3 | disk.qcow2 (Windows + WSL2 + ikuku tests) |
+| `win-prospect` | /vm/prospect | 100GB | gp3 | disk.qcow2 (clean Windows for prospect sim) |
 
-```bash
-sudo parted /dev/nvme1n1 mklabel gpt
-sudo parted /dev/nvme1n1 mkpart var ext4 1MiB 24GiB
-sudo parted /dev/nvme1n1 mkpart usr ext4 24GiB 72GiB
-sudo parted /dev/nvme1n1 mkpart opt ext4 72GiB 192GiB
-sudo parted /dev/nvme1n1 mkpart data ext4 192GiB 240GiB
+## Port Mapping
 
-for i in 1 2 3 4; do sudo mkfs.ext4 /dev/nvme1n1p$i; done
-sudo e2label /dev/nvme1n1p1 var
-sudo e2label /dev/nvme1n1p2 usr
-sudo e2label /dev/nvme1n1p3 opt
-sudo e2label /dev/nvme1n1p4 data
+| VM (slot) | Linux SSH | Win SSH | Win RDP | VNC |
+|-----------|-----------|---------|---------|-----|
+| (host) | 22 | - | - | - |
+| ikuku (0) | - | 2222 | 3389 | 5900 |
+| prospect (1) | - | 2223 | 3390 | 5901 |
+| erpgulf (2) | - | 2224 | 3391 | 5902 |
+
+## Lifecycle
+
+```
+First time:
+  shazam up ikuku        → creates fresh volumes, installs QEMU
+  shazam install ikuku   → installs Windows (30 min)
+  shazam snapshot ikuku  → saves the golden image
+  shazam clone ikuku prospect  → creates prospect from golden image
+
+Normal use:
+  shazam up              → creates volumes from snapshots, boots all VMs
+  (work, test, develop)
+  shazam down            → snapshots everything, terminates, deletes volumes
+
+Spot reclaim recovery:
+  (instance dies)
+  shazam up              → new instance, new volumes from existing snapshots
+  (continues from last snapshot — at most minutes of work lost)
 ```
 
-### Download ISOs
+## Cost
 
-```bash
-# Windows Server 2022 Evaluation (~4.7GB)
-# https://www.microsoft.com/en-us/evalcenter/evaluate-windows-server-2022
-# Save as: /data/win2022.iso
+| Resource | Cost | When |
+|----------|------|------|
+| m5d.metal spot | ~$0.78/hr | Only while running |
+| Snapshots | ~$0.05/GB/mo | Always (actual data, not provisioned size) |
+| Typical: 1 VM (50GB actual data) | ~$2.50/mo | Snapshot storage |
+| During run: volumes exist | ~$0.08/GB/mo pro-rated | Only during session |
 
-# VirtIO drivers (~754MB)
-# https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso
-# Save as: /data/virtio-win.iso
-```
+**Monthly cost when not running:** ~$5 for 2 VM snapshots + data snapshot.
+**Hourly cost when running:** ~$0.80 (spot) + negligible volume cost.
 
-### Install QEMU
+## Commands Reference
 
-```bash
-sudo apt-get install -y qemu-system-x86 qemu-utils ovmf socat dosfstools
-```
+| Command | Action |
+|---------|--------|
+| `shazam up [vm1,vm2]` | Launch instance, create volumes from snapshots, boot VMs |
+| `shazam down` | Snapshot + terminate + delete volumes |
+| `shazam ssh` | SSH to Linux host |
+| `shazam winssh <vm>` | SSH to Windows VM |
+| `shazam status` | Show instance + snapshot state |
+| `shazam snapshot <vm>` | Manual snapshot of running VM |
+| `shazam clone <src> <dst>` | Clone a VM (snapshot → new VM name) |
+| `shazam install <vm>` | Fresh Windows install on empty VM volume |
+| `shazam list` | List all VM snapshots |
+| `shazam cost` | Show current costs |
+| `shazam destroy` | Delete EVERYTHING (snapshots, SG, key) |
 
-## Troubleshooting
+## Recovery from Previous Design
 
-### "Component or setting does not exist" in autounattend
-`DriverPaths` is in the wrong component. Must be `Microsoft-Windows-PnpCustomizationsWinPE`, not `Microsoft-Windows-Setup`.
+The old design used a single 250GB volume with multiple partitions. That volume
+and its snapshot have been deleted. Starting fresh with the multi-volume design.
 
-### "Internal error loading answer file"
-Special characters in `FirstLogonCommands` XML. Move complex logic to a .ps1 file on the floppy and call it with `powershell.exe -File A:\setup.ps1`.
-
-### Windows can't see the disk during install
-VirtIO storage driver not loaded. Ensure `DriverPaths` includes paths to `viostor\2k22\amd64` on the VirtIO ISO.
-
-### WSL shows version 1 / wsl.exe prints help for all commands
-Inbox `wsl.exe` on Server 2022 build 20348.587 is broken. Install WSL 2.6.3 MSI from GitHub and use `"C:\Program Files\WSL\wsl.exe"` directly. Requires Windows Update to build 20348.2700+.
-
-### QEMU monitor sendkey doesn't work for complex commands
-Use `vncdotool` for VNC interaction: `pip3 install vncdotool && vncdo -s localhost::5900 move X Y click 1`
-
-### Spot instance terminated, data lost?
-All important data is on the persistent EBS volume. Just run `bash shazam.sh` again.
-
-## Exposing WSL2 services to LAN
-
-WSL2 runs in a virtual network. To expose a service (e.g., a web app on port 8080) to other machines:
-
-```powershell
-$wslIp = (& "C:\Program Files\WSL\wsl.exe" -u root -- hostname -I).Trim()
-netsh interface portproxy add v4tov4 listenport=9080 listenaddress=0.0.0.0 connectport=8080 connectaddress=$wslIp
-netsh advfirewall firewall add rule name="WSL-9080" dir=in action=allow protocol=TCP localport=9080
-```
-
-Note: WSL IP changes on reboot. The port proxy must be updated after each restart.
+First session will:
+1. `shazam up ikuku` → fresh volumes, downloads ISOs
+2. `shazam install ikuku` → Windows install (~30 min)
+3. `shazam snapshot ikuku` → golden image saved
+4. Future sessions boot in ~3 min from snapshot

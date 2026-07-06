@@ -159,7 +159,7 @@ cmd_up() {
     local data_vol=""
     if [ -n "$data_snap" ]; then
         info "  data: from snapshot $data_snap"
-        data_vol=$(create_volume "data" 20 "$data_snap" "sc1")
+        data_vol=$(create_volume "data" 20 "$data_snap" "gp3")
     else
         info "  data: fresh 20GB (will download ISOs)"
         data_vol=$(create_volume "data" 20 "" "gp3")
@@ -272,11 +272,28 @@ for dev in /dev/nvme{1..5}n1; do
 done
 
 # Format any unformatted volumes (new/fresh)
-for dev in /dev/nvme{1..5}n1; do
+# Use size to determine role: <=30GB = data, >30GB = win-vm
+VM_SLOT=0
+for dev in /dev/nvme{1..8}n1; do
     [ -b "$dev" ] || continue
     LABEL=$(blkid -s LABEL -o value "$dev" 2>/dev/null || true)
     [ -n "$LABEL" ] && continue
-    # Unformatted — check instance tags or just skip (will be formatted by install-windows.sh)
+    # Skip the root disk and instance store (>200GB)
+    SIZE_GB=$(lsblk -bno SIZE "$dev" 2>/dev/null | awk '{printf "%d", $1/1073741824}')
+    [ "$SIZE_GB" -gt 200 ] && continue
+    [ "$SIZE_GB" -eq 0 ] && continue
+    if [ "$SIZE_GB" -le 30 ]; then
+        mkfs.ext4 -q -L data "$dev"
+        mount "$dev" /data
+        echo "Formatted $dev as data (${SIZE_GB}GB)"
+    else
+        VM_NAME="vm${VM_SLOT}"
+        mkfs.ext4 -q -L "win-${VM_NAME}" "$dev"
+        mkdir -p "/vm/${VM_NAME}"
+        mount "$dev" "/vm/${VM_NAME}"
+        echo "Formatted $dev as win-${VM_NAME} (${SIZE_GB}GB)"
+        VM_SLOT=$((VM_SLOT+1))
+    fi
 done
 
 # Download ISOs if data volume is empty
@@ -407,8 +424,8 @@ cmd_down() {
 
 # --- Snapshot a specific VM ---
 cmd_snapshot() {
-    local vm="${1:-}" 
-    [ -z "$vm" ] && die "Usage: bash shazam.sh snapshot <vm-name>"
+    local vm="${1:-}" label="${2:-}"
+    [ -z "$vm" ] && die "Usage: bash shazam.sh snapshot <vm-name> [label]"
     preflight; load
     [ -z "${INSTANCE_ID:-}" ] && die "No instance running."
 
@@ -418,9 +435,15 @@ cmd_snapshot() {
         --query 'Volumes[0].VolumeId' --output text)
     [ "$vol_id" = "None" ] && die "No volume found for VM '$vm'"
 
-    info "Snapshotting $vm ($vol_id)..."
-    local snap_id=$(snapshot_volume "$vol_id" "$vm" "vm")
-    info "Created snapshot: $snap_id"
+    local date_tag=$(date -u +%Y%m%d-%H%M)
+    local snap_name="$TAG_PREFIX-$vm-$date_tag${label:+-$label}"
+    local desc="$snap_name"
+
+    info "Snapshotting $vm ($vol_id) → $snap_name"
+    local snap_id=$(aws ec2 create-snapshot --volume-id "$vol_id" --description "$desc" \
+        --tag-specifications "ResourceType=snapshot,Tags=[{Key=Name,Value=$snap_name},{Key=$TAG_PREFIX-vm,Value=$vm},{Key=$TAG_PREFIX-role,Value=vm}]" \
+        --query 'SnapshotId' --output text)
+    info "Created: $snap_id ($snap_name)"
 }
 
 # --- Clone a VM ---

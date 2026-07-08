@@ -1,8 +1,8 @@
 # metal-spot4win
 
-Windows Server 2022 QEMU/KVM dev environment on AWS Linux metal spot instances with WSL2 Ubuntu — for packaging Linux open source software for the Windows ecosystem.
+Multi-VM Windows dev environment on AWS metal spot instances — for packaging and testing Linux open-source software (ERPNext, Frappe) as Windows installers.
 
-## Quick Start (5 minutes)
+## Quick Start
 
 ### 1. Open AWS CloudShell
 
@@ -10,130 +10,142 @@ Log into the [AWS Console](https://console.aws.amazon.com), then click the Cloud
 
 ![Click the CloudShell icon in the AWS Console top bar](.github/cloudshell-icon.svg)
 
-> CloudShell gives you a terminal with AWS credentials already configured — no setup needed.
-
 ### 2. Clone and launch
 
 ```bash
 git clone https://github.com/labsji/ec2-win22-qemu-spot-metal.git
 cd ec2-win22-qemu-spot-metal
-bash shazam.sh
+bash shazam.sh up ikuku
 ```
 
-That's it. In ~5 minutes you'll have a Windows Server 2022 VM with WSL2 Ubuntu, SSH, RDP, Git, Chocolatey, and podman.
+Boots from the latest snapshot in ~5 minutes. Multiple VMs supported.
 
 ### 3. When you're done
 
 ```bash
-bash shazam.sh down      # stop instance, keep your data (~$20/month for EBS)
-bash shazam.sh destroy   # delete EVERYTHING, zero ongoing cost
+bash shazam.sh down      # snapshot + terminate (zero ongoing compute cost)
+bash shazam.sh destroy   # delete EVERYTHING including snapshots
 ```
 
-### All commands
+## Commands
 
 | Command | What it does |
 |---------|-------------|
-| `bash shazam.sh` | Launch (or resume) the dev environment |
-| `bash shazam.sh down` | Terminate instance, keep EBS data |
-| `bash shazam.sh destroy` | Delete ALL resources (confirms first) |
-| `bash shazam.sh ssh` | SSH into the Linux host |
-| `bash shazam.sh winssh` | SSH into the Windows VM |
-| `bash shazam.sh status` | Show current state |
+| `bash shazam.sh up [vm1,vm2]` | Launch instance, create volumes from snapshots, boot VMs |
+| `bash shazam.sh down` | Snapshot all → terminate → delete volumes |
+| `bash shazam.sh ssh` | SSH into Linux host |
+| `bash shazam.sh winssh <vm>` | SSH into a Windows VM |
+| `bash shazam.sh status` | Show instance + snapshot state |
 | `bash shazam.sh cost` | Show running costs |
+| `bash shazam.sh snapshot <vm> [label]` | Manual checkpoint snapshot |
+| `bash shazam.sh clone <src> <dst>` | Clone a VM (snapshot → new VM name) |
+| `bash shazam.sh install <vm>` | Fresh Windows install on empty VM |
+| `bash shazam.sh list` | List all VM snapshots |
+| `bash shazam.sh destroy` | Delete ALL resources (confirms first) |
+
+## Architecture (v2)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  AWS m5d.metal spot instance (ap-south-1a)                      │
+│  Ubuntu 24.04 + QEMU/KVM                                       │
+│                                                                 │
+│  /data (EBS vol, LABEL=data)        ← ISOs, shared tools       │
+│  /vm/ikuku (EBS vol, LABEL=win-ikuku)    ← QCOW2 + state       │
+│  /vm/prospect (EBS vol, LABEL=win-prospect) ← QCOW2 + state    │
+│                                                                 │
+│  ┌────────────────────┐  ┌────────────────────┐                 │
+│  │ VM: ikuku          │  │ VM: prospect       │                 │
+│  │ SSH:2222 RDP:3389  │  │ SSH:2223 RDP:3390  │                 │
+│  │ VNC:5900           │  │ VNC:5901           │                 │
+│  │ Windows Server 2022│  │ Windows Server 2022│                 │
+│  │ + WSL2 + podman    │  │ (clean prospect)   │                 │
+│  └────────────────────┘  └────────────────────┘                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Principles
+
+1. **Snapshots are truth, volumes are ephemeral.** On `up`: create volumes from snapshots. On `down`: snapshot + delete volumes. Spot reclaim? Create new volumes from snapshot, launch new instance.
+
+2. **One filesystem per volume.** No partitions. Each volume = one ext4 with a LABEL. No data loss from force-detach.
+
+3. **Multi-VM via separate volumes.** Each Windows VM gets its own EBS volume. Port mapping is slot-based (VM index determines SSH/RDP/VNC ports).
 
 ## Why?
 
-**Why metal instances?** Regular EC2 instances run inside a hypervisor — you can't run another hypervisor (QEMU/KVM) inside them. Metal instances give you bare-metal access with hardware virtualization (VT-x), so QEMU can run a Windows VM with near-native performance.
+**Why metal instances?** Regular EC2 instances can't run nested hypervisors. Metal gives bare-metal access with VT-x — QEMU runs Windows at near-native speed.
 
-**Why Linux hosting Windows?** AWS Windows metal instances (`i3en.metal`) cost ~$5/hr. Linux metal spot instances (`c5.metal`) cost ~$1.50/hr — 70% cheaper. Running Windows as a QEMU/KVM guest on Linux gives you a full Windows Server 2022 environment at Linux spot prices.
+**Why Linux hosting Windows?** AWS Windows metal = ~$5/hr. Linux metal spot = ~$0.78/hr. 85% cheaper.
 
-**Why Windows → WSL2 → Linux (the nesting)?** Many open-source server applications (Frappe, ERPNext, etc.) run on Linux but need to be packaged as Windows installers (.exe) for enterprise users. The stack is:
+**Why the nesting (Linux → Windows → WSL2 → Linux)?** We're testing Windows installers that set up WSL2 + podman for end users. This mirrors exactly what a prospect's machine looks like.
 
-1. **Linux metal host** — cheap, runs QEMU
-2. **Windows VM** — the target platform for building/testing .exe installers
-3. **WSL2 inside Windows** — provides the Linux environment (podman, containers) that the installer sets up for end users
+**Why spot?** Metal is expensive. Spot saves 60-80%. Snapshots survive spot terminations — zero data loss.
 
-This mirrors exactly what an end user's Windows machine looks like, making it the ideal build and test environment.
+## Snapshot Library
 
-**Why spot instances?** Metal instances are expensive even on Linux. Spot pricing saves 60-70%. The persistent EBS volume survives spot terminations — your Windows VM, WSL2 setup, and all data persist across spot cycles.
+The system maintains a library of VM snapshots at logical points:
 
-## Architecture
+| Snapshot | Content | Use case |
+|----------|---------|----------|
+| `win22-fresh` | Just installed, no updates, no WSL | Test installer from scratch |
+| `win-base` | Updated + WSL2 + podman | Test with WSL already present |
+| `ikuku-full-working` | Full ikuku installed + Kiro | Quick resume, regression |
+| `data-isos` | Windows + VirtIO ISOs | New VM installs |
 
-```
-┌─────────────────────────────────────────────┐
-│  AWS c5.metal spot instance (ap-south-1a)   │
-│  Ubuntu 24.04 + QEMU/KVM                    │
-│                                             │
-│  ┌─────────────────────────────────────┐    │
-│  │  Windows Server 2022 (QEMU VM)      │    │
-│  │  - Activated (ServerStandard)       │    │
-│  │  - SSH (port 2222), RDP (3389)      │    │
-│  │  - Git, Chocolatey                  │    │
-│  │  ┌─────────────────────────────┐    │    │
-│  │  │  WSL2 Ubuntu                │    │    │
-│  │  │  Kernel 6.6.87             │    │    │
-│  │  │  (your dev environment)    │    │    │
-│  │  └─────────────────────────────┘    │    │
-│  └─────────────────────────────────────┘    │
-│                                             │
-│  250GB EBS (persistent across spot cycles)  │
-│  /var /usr /opt /data                       │
-└─────────────────────────────────────────────┘
-```
-
-## What you get
-
-- Windows Server 2022 (activated, latest build)
-- SSH, RDP access
-- Chocolatey, Git
-- WSL2 Ubuntu 24.04 with kernel 6.6.87
-- Podman + podman-compose for running containerized Linux applications
-- Dev tools: gcc, python3, aws-cli, jq, curl
-
-## Prerequisites
-
-1. AWS account with ap-south-1 (Mumbai) access
-2. AWS CloudShell (recommended) or any machine with AWS CLI configured
-3. Spot vCPU quota of at least 96 for c5.metal ([request increase](https://console.aws.amazon.com/servicequotas))
-
-## Accessing the environment
-
-### SSH into Windows
-
+Clone any snapshot to create disposable test VMs:
 ```bash
-bash shazam.sh winssh
-# Password: see secrets/admin-password.txt
-```
-
-### RDP
-
-Connect your RDP client to `<IP>:3389` (IP shown after `bash shazam.sh`).
-
-### VNC
-
-```bash
-ssh -L 5900:localhost:5900 -i ~/.ssh/shazam-* ubuntu@<IP>
-# Then connect VNC client to localhost:5900
+bash shazam.sh clone win-base prospect    # 30 seconds
+bash shazam.sh up prospect                # boot the clone
+# test... trash it... clone again
 ```
 
 ## Cost
 
 | Resource | Cost | When |
 |----------|------|------|
-| c5.metal spot | ~$1.50/hr | Only while running |
-| 250GB EBS | ~$20/month | Always (until `destroy`) |
+| m5d.metal spot | ~$0.78/hr | Only while running |
+| Snapshots | ~$0.05/GB/mo actual data | Always |
+| Typical idle (5 snapshots) | ~$5/month | Snapshots only |
 
-Run `bash shazam.sh cost` to see current prices.
+**No ongoing compute cost when stopped.** Only snapshot storage.
 
-## Technical details
+## Prerequisites
+
+1. AWS account with ap-south-1 (Mumbai) access
+2. AWS CloudShell (recommended) or any machine with AWS CLI
+3. Spot vCPU quota of at least 96 ([request increase](https://console.aws.amazon.com/servicequotas))
+
+## Accessing VMs
+
+```bash
+bash shazam.sh ssh              # Linux host
+bash shazam.sh winssh ikuku     # Windows VM (port 2222)
+bash shazam.sh winssh prospect  # Second VM (port 2223)
+```
+
+RDP: `<IP>:3389` (first VM), `<IP>:3390` (second VM)
+
+## First-Time Setup
+
+If no snapshots exist (fresh start):
+
+```bash
+bash shazam.sh up ikuku         # creates fresh volumes, downloads ISOs
+bash shazam.sh install ikuku    # installs Windows (~30 min, unattended)
+bash shazam.sh snapshot ikuku   # save the golden image — never rebuild
+```
+
+## Technical Details
 
 See [DESIGN.md](DESIGN.md) for:
-- Unattended Windows install (autounattend.xml)
-- Two-phase setup.ps1 (DISM activation, WSL2, Windows Update)
+- Snapshot-as-persistence lifecycle
+- Multi-VM port mapping
+- Cloud-init volume detection
 - QEMU configuration
-- Troubleshooting
-- Exposing WSL2 services to LAN
+- Spot reclamation handling (spec)
+- Win11 with software TPM (swtpm)
 
 ## Credits
 
-Co-created with [Kiro](https://kiro.dev) — from spot instance orchestration to QCOW2 snapshot management, every script was pair-programmed in `kiro-cli`.
+Co-created with [Kiro](https://kiro.dev) — from spot instance orchestration to snapshot management, every script was pair-programmed in `kiro-cli`.
